@@ -4,13 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>GitMemo - Cloud Markdown Notepad</title>
-  <!-- Marked.js (Markdown Parser) -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-  <!-- DOMPurify (XSS サニタイズ用・外部公開必須) -->
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
-  <!-- Google Identity Services & Google API Loader (Picker用) -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="https://apis.google.com/js/api.js" async defer></script>
   <style>
     :root {
       --bg: #f8fafc;
@@ -20,7 +16,6 @@
       --muted: #64748b;
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
-      --danger: #dc2626;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -31,8 +26,6 @@
       display: flex;
       flex-direction: column;
     }
-
-    /* オーバーレイ共通 */
     .overlay {
       position: fixed;
       inset: 0;
@@ -56,17 +49,17 @@
     }
     .card h1, .card h2 { font-size: 1.4rem; margin-bottom: 0.75rem; }
     .card p { color: var(--muted); font-size: 0.92rem; margin-bottom: 1.5rem; line-height: 1.6; }
-    .btn-group { display: flex; flex-direction: column; gap: 0.75rem; }
     .btn-primary {
       background: var(--primary);
       color: #fff;
       border: none;
-      padding: 0.75rem 1.25rem;
+      padding: 0.75rem 1.5rem;
       font-size: 0.95rem;
       font-weight: 600;
       border-radius: 8px;
       cursor: pointer;
       transition: background 0.2s;
+      width: 100%;
     }
     .btn-primary:hover { background: var(--primary-hover); }
     .btn-secondary {
@@ -75,19 +68,13 @@
       border: 1px solid var(--border);
       padding: 0.7rem 1.25rem;
       font-size: 0.9rem;
-      font-weight: 500;
       border-radius: 8px;
       cursor: pointer;
+      width: 100%;
     }
-    .btn-secondary:hover { background: var(--bg); }
-    .policy-links {
-      margin-top: 1.5rem;
-      font-size: 0.8rem;
-      color: var(--muted);
-    }
-    .policy-links a { color: var(--muted); text-decoration: underline; cursor: pointer; margin: 0 0.4rem; }
+    .policy-links { margin-top: 1.5rem; font-size: 0.8rem; color: var(--muted); }
+    .policy-links a { color: var(--muted); text-decoration: underline; cursor: pointer; }
 
-    /* ヘッダー・ツールバー */
     header {
       background: var(--surface);
       border-bottom: 1px solid var(--border);
@@ -98,11 +85,7 @@
       flex-wrap: wrap;
       gap: 0.5rem;
     }
-    .toolbar-left, .toolbar-right {
-      display: flex;
-      align-items: center;
-      gap: 0.4rem;
-    }
+    .toolbar-left, .toolbar-right { display: flex; align-items: center; gap: 0.4rem; }
     .app-title { font-weight: 700; font-size: 1.05rem; margin-right: 0.5rem; }
     .tool-btn {
       background: var(--surface);
@@ -115,19 +98,9 @@
     }
     .tool-btn:hover:not(:disabled) { background: var(--bg); }
     .tool-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-    #sync-status {
-      font-size: 0.82rem;
-      color: var(--muted);
-      margin-right: 0.4rem;
-    }
+    #sync-status { font-size: 0.82rem; color: var(--muted); margin-right: 0.4rem; }
 
-    /* エディタ＆プレビュー領域 */
-    main {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      overflow: hidden;
-    }
+    main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
     #editor {
       width: 100%;
       height: 100%;
@@ -142,37 +115,15 @@
       background: var(--surface);
       color: var(--text);
     }
-    #preview {
-      padding: 1.25rem 1.5rem;
-      overflow-y: auto;
-      line-height: 1.7;
-      background: var(--bg);
-    }
+    #preview { padding: 1.25rem 1.5rem; overflow-y: auto; line-height: 1.7; background: var(--bg); }
     #preview h1, #preview h2, #preview h3 { margin: 1.2em 0 0.5em; }
     #preview h1:first-child, #preview h2:first-child { margin-top: 0; }
     #preview p, #preview ul, #preview ol, #preview blockquote { margin-bottom: 1em; }
     #preview ul, #preview ol { padding-left: 1.5rem; }
-    #preview code {
-      background: #e2e8f0;
-      padding: 0.15rem 0.35rem;
-      border-radius: 4px;
-      font-family: monospace;
-      font-size: 0.9em;
-    }
-    #preview pre {
-      background: #1e293b;
-      color: #f8fafc;
-      padding: 1rem;
-      border-radius: 8px;
-      overflow-x: auto;
-      margin-bottom: 1em;
-    }
+    #preview code { background: #e2e8f0; padding: 0.15rem 0.35rem; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+    #preview pre { background: #1e293b; color: #f8fafc; padding: 1rem; border-radius: 8px; overflow-x: auto; margin-bottom: 1em; }
     #preview pre code { background: none; color: inherit; padding: 0; }
-    #preview blockquote {
-      border-left: 4px solid #cbd5e1;
-      padding-left: 1rem;
-      color: var(--muted);
-    }
+    #preview blockquote { border-left: 4px solid #cbd5e1; padding-left: 1rem; color: var(--muted); }
 
     @media (max-width: 768px) {
       main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
@@ -182,53 +133,35 @@
 </head>
 <body>
 
-  <!-- 1. Googleアカウント選択案内画面 -->
   <div id="auth-overlay" class="overlay">
     <div class="card">
       <h1>GitMemo</h1>
-      <p>Googleアカウントを選択してログインしてください。<br>あなたのGoogle Drive上の <code>gitmemo</code> ファイルのみにアクセスし、リアルタイム同期を開始します。</p>
-      <div class="btn-group">
-        <button id="login-btn" class="btn-primary">Googleアカウントを選択して開始</button>
-      </div>
+      <p>Googleアカウントを選択してログインしてください。<br>Google Drive上の <code>gitmemo</code> ファイルとリアルタイム同期を開始します。</p>
+      <button id="login-btn" class="btn-primary">Googleアカウントを選択して開始</button>
       <div class="policy-links">
         <a id="open-privacy-btn">プライバシーポリシー・利用規約</a>
       </div>
     </div>
   </div>
 
-  <!-- 2. 初回ファイル選択モーダル (drive.file スコープ対応) -->
-  <div id="setup-overlay" class="overlay" style="display: none;">
-    <div class="card">
-      <h2>gitmemo の初期設定</h2>
-      <p>このアプリと連携済みの <code>gitmemo</code> が見つかりませんでした。<br>新しく作成するか、すでにDrive内にある既存の <code>gitmemo</code> を選択してください。</p>
-      <div class="btn-group">
-        <button id="create-new-btn" class="btn-primary">新しく gitmemo を作成して開始</button>
-        <button id="pick-existing-btn" class="btn-secondary">Drive内の既存ファイルを選択する</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 3. プライバシーポリシーモーダル (外部公開審査・信頼性用) -->
   <div id="privacy-overlay" class="overlay" style="display: none;">
     <div class="card" style="text-align: left; max-width: 520px;">
       <h2>プライバシーポリシー・利用規約</h2>
       <p style="font-size: 0.85rem; margin-bottom: 1rem;">
         <strong>1. データの保存先とアクセス権限:</strong><br>
-        当サービス（GitMemo）はサーバーを持たない静的Webアプリケーションです。取得する権限（<code>drive.file</code>）により、当アプリで作成したファイル、またはお客様が明示的に選択したファイルのみにアクセスします。Drive内の他のファイルを閲覧・変更することは一切ありません。<br><br>
+        当サービス（GitMemo）は静的Webアプリケーションです。取得する権限（<code>drive.file</code>）により、当アプリが作成した <code>gitmemo</code> ファイルのみにアクセスし、Google Drive内の他のファイルを閲覧・変更することは一切ありません。<br><br>
         <strong>2. データの第三者提供:</strong><br>
-        入力されたメモデータおよび認証トークンは、お使いのブラウザとGoogle Drive API間の直接通信にのみ使用され、開発者や第三者のサーバーへ送信・保存されることはありません。
+        入力されたメモデータおよび認証トークンは、お使いのブラウザとGoogle Drive API間の直接通信にのみ使用され、外部サーバーへ送信・保存されることはありません。
       </p>
-      <button id="close-privacy-btn" class="btn-secondary" style="width: 100%;">閉じる</button>
+      <button id="close-privacy-btn" class="btn-secondary">閉じる</button>
     </div>
   </div>
 
-  <!-- 4. メイン画面 -->
   <header>
     <div class="toolbar-left">
       <span class="app-title">GitMemo</span>
       <button id="undo-btn" class="tool-btn" title="元に戻す (Ctrl+Z)" disabled>↩ 元に戻す</button>
       <button id="redo-btn" class="tool-btn" title="やり直し (Ctrl+Y / Ctrl+Shift+Z)" disabled>↪ やり直し</button>
-      <button id="reselect-file-btn" class="tool-btn" title="Driveから別のgitmemoを選び直す" disabled>📁 ファイル変更</button>
     </div>
     <div class="toolbar-right">
       <span id="sync-status">未ログイン</span>
@@ -244,37 +177,26 @@
 
   <script>
     // ============================================================================
-    // 【重要】ご自身のGoogle Cloud プロジェクトの情報に置き換えてください
+    // 設定: OAuth クライアントIDのみ（API_KEYは不要なのでGitHubの警告も出ません）
     // ============================================================================
     const CLIENT_ID = '835521008720-88f24e5v1klr1jn8l66m6oc4jhtb3ljk.apps.googleusercontent.com';
-    const API_KEY   = 'AIzaSyADMmca6tpWjaCKYqQGWUbl81CzMwh2ypw'; // Google Picker API 制限付きキー
-    const APP_ID    = '835521008720'; // クライアントIDの先頭の数字部分
-
     const TARGET_FILE_NAME = 'gitmemo';
-    // 外部公開に必須の非機密スコープ（審査不要で全ユーザーに公開可能）
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
     let tokenClient;
     let accessToken = null;
     let fileId = null;
     let saveTimer = null;
-    let pickerApiLoaded = false;
 
-    // Undo / Redo 履歴管理
     let historyStack = [''];
     let historyIndex = 0;
     let isHistoryNavigating = false;
 
-    // 要素参照
     const authOverlay = document.getElementById('auth-overlay');
-    const setupOverlay = document.getElementById('setup-overlay');
     const privacyOverlay = document.getElementById('privacy-overlay');
     const loginBtn = document.getElementById('login-btn');
     const switchAccountBtn = document.getElementById('switch-account-btn');
     const logoutBtn = document.getElementById('logout-btn');
-    const reselectFileBtn = document.getElementById('reselect-file-btn');
-    const createNewBtn = document.getElementById('create-new-btn');
-    const pickExistingBtn = document.getElementById('pick-existing-btn');
     const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const syncStatus = document.getElementById('sync-status');
@@ -283,55 +205,38 @@
 
     marked.setOptions({ breaks: true, gfm: true });
 
-    // XSS対策付きの安全なマークダウン描画関数
     function renderSafeMarkdown(markdownText) {
-      const rawHtml = marked.parse(markdownText);
-      preview.innerHTML = DOMPurify.sanitize(rawHtml);
+      preview.innerHTML = DOMPurify.sanitize(marked.parse(markdownText));
     }
 
-    // ============================================================================
-    // 初期化 & 認証管理
-    // ============================================================================
     window.addEventListener('load', () => {
-      // Google Identity Services 初期化
       tokenClient = google.accounts.oauth2.initTokenClient({
         client_id: CLIENT_ID,
         scope: SCOPES,
         callback: async (response) => {
           if (response.error) {
-            setStatus('認証キャンセル / エラー');
+            setStatus('認証エラー');
             return;
           }
           accessToken = response.access_token;
           authOverlay.style.display = 'none';
           logoutBtn.style.display = 'inline-block';
-          reselectFileBtn.disabled = false;
           await initializeGitMemo();
         }
       });
-
-      // Google Picker API ローダー初期化
-      if (window.gapi) {
-        gapi.load('picker', () => { pickerApiLoaded = true; });
-      }
     });
 
-    // アカウント選択画面を表示してログイン
     function requestAccountSelection() {
       tokenClient.requestAccessToken({ prompt: 'select_account' });
     }
 
-    // ログアウト処理
     function handleLogout() {
-      if (accessToken) {
-        google.accounts.oauth2.revoke(accessToken, () => {});
-      }
+      if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
       accessToken = null;
       fileId = null;
       editor.value = '';
       preview.innerHTML = '';
       editor.disabled = true;
-      reselectFileBtn.disabled = true;
       logoutBtn.style.display = 'none';
       setStatus('未ログイン');
       authOverlay.style.display = 'flex';
@@ -341,126 +246,52 @@
     switchAccountBtn.addEventListener('click', requestAccountSelection);
     logoutBtn.addEventListener('click', handleLogout);
 
-    // プライバシーポリシー表示制御
-    document.getElementById('open-privacy-btn').addEventListener('click', () => {
-      privacyOverlay.style.display = 'flex';
-    });
-    document.getElementById('close-privacy-btn').addEventListener('click', () => {
-      privacyOverlay.style.display = 'none';
-    });
+    document.getElementById('open-privacy-btn').addEventListener('click', () => privacyOverlay.style.display = 'flex');
+    document.getElementById('close-privacy-btn').addEventListener('click', () => privacyOverlay.style.display = 'none');
 
-    // ============================================================================
-    // Google Drive ファイル検索・連携・自動保存
-    // ============================================================================
     async function initializeGitMemo() {
       setStatus('Drive上の gitmemo を確認中...');
       editor.disabled = true;
 
       try {
-        // 1. このアプリに権限がある `gitmemo` ファイルを検索
         const query = encodeURIComponent(`name = '${TARGET_FILE_NAME}' and trashed = false`);
         const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {
           headers: { Authorization: `Bearer ${accessToken}` }
         });
-
-        if (!searchRes.ok) throw new Error('Search failed');
         const searchData = await searchRes.json();
 
         if (searchData.files && searchData.files.length > 0) {
-          // アプリ管理下の gitmemo が見つかった場合は即座に読み込む
           fileId = searchData.files[0].id;
-          await loadFileContent(fileId);
+          setStatus('gitmemo を読み込み中...');
+          const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+            headers: { Authorization: `Bearer ${accessToken}` }
+          });
+          const text = await contentRes.text();
+          loadInitialContent(text);
+          setStatus('同期完了');
         } else {
-          // 見つからない場合は新規作成 or 既存ファイル選択(Picker) を案内
-          setupOverlay.style.display = 'flex';
-          setStatus('初期設定待ち...');
+          setStatus('gitmemo を新規作成中...');
+          const res = await fetch('https://www.googleapis.com/drive/v3/files', {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ name: TARGET_FILE_NAME, mimeType: 'text/markdown' })
+          });
+          const data = await res.json();
+          fileId = data.id;
+          loadInitialContent('# GitMemo\n\nGoogle Drive上の `gitmemo` と同期を開始しました。');
+          await saveToDrive();
         }
-      } catch (err) {
-        console.error(err);
-        setStatus('エラー: Driveへの接続に失敗しました');
-      }
-    }
-
-    // 指定したファイルIDの中身を読み込んでエディタを開始
-    async function loadFileContent(targetId) {
-      setStatus('gitmemo を読み込み中...');
-      try {
-        const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${targetId}?alt=media`, {
-          headers: { Authorization: `Bearer ${accessToken}` }
-        });
-        if (!contentRes.ok) throw new Error('Failed to fetch file content');
-        const text = await contentRes.text();
-        loadInitialContent(text);
         editor.disabled = false;
         editor.focus();
-        setStatus('同期完了');
       } catch (err) {
         console.error(err);
-        setStatus('エラー: ファイル読み込み失敗');
+        setStatus('エラー: 同期失敗');
       }
     }
 
-    // 新規 `gitmemo` ファイルを作成して開始
-    createNewBtn.addEventListener('click', async () => {
-      setupOverlay.style.display = 'none';
-      setStatus('gitmemo を新規作成中...');
-      try {
-        const metadata = {
-          name: TARGET_FILE_NAME,
-          mimeType: 'text/markdown'
-        };
-        const res = await fetch('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(metadata)
-        });
-        const data = await res.json();
-        fileId = data.id;
-        loadInitialContent('# GitMemo\n\nGoogle Drive上の `gitmemo` と同期を開始しました。');
-        editor.disabled = false;
-        editor.focus();
-        await saveToDrive();
-      } catch (err) {
-        console.error(err);
-        setStatus('エラー: 新規作成に失敗しました');
-      }
-    });
-
-    // Google Picker で既存のファイルを選択して権限を付与
-    function openGooglePicker() {
-      if (!pickerApiLoaded) {
-        alert('Google Picker APIの読み込み中です。数秒後にもう一度お試しください。');
-        return;
-      }
-      const view = new google.picker.DocsView(google.picker.ViewId.DOCS)
-        .setQuery(TARGET_FILE_NAME)
-        .setIncludeFolders(false);
-
-      const picker = new google.picker.PickerBuilder()
-        .setDeveloperKey(API_KEY)
-        .setAppId(APP_ID)
-        .setOAuthToken(accessToken)
-        .addView(view)
-        .setTitle('同期する gitmemo ファイルを選択してください')
-        .setCallback(async (data) => {
-          if (data[google.picker.Response.ACTION] === google.picker.Action.PICKED) {
-            const doc = data[google.picker.Response.DOCUMENTS][0];
-            fileId = doc[google.picker.Document.ID];
-            setupOverlay.style.display = 'none';
-            await loadFileContent(fileId);
-          }
-        })
-        .build();
-      picker.setVisible(true);
-    }
-
-    pickExistingBtn.addEventListener('click', openGooglePicker);
-    reselectFileBtn.addEventListener('click', openGooglePicker);
-
-    // Google Drive への上書き保存
     async function saveToDrive() {
       if (!fileId || !accessToken) return;
       setStatus('保存中...');
@@ -474,11 +305,11 @@
           body: editor.value
         });
         if (res.ok) {
+          saveTimer = null;
           const now = new Date().toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
           setStatus(`自動保存済み (${now})`);
         } else if (res.status === 401) {
-          // アクセストークン期限切れ（1時間経過）時の自動リカバリ案内
-          setStatus('セッション期限切れ（再認証中...）');
+          setStatus('再認証中...');
           tokenClient.requestAccessToken({ prompt: '' });
         } else {
           setStatus('保存エラー');
@@ -492,16 +323,13 @@
     function scheduleAutoSave() {
       setStatus('未保存の変更...');
       if (saveTimer) clearTimeout(saveTimer);
-      saveTimer = setTimeout(() => {
-        saveToDrive();
-      }, 1000);
+      saveTimer = setTimeout(saveToDrive, 1000);
     }
 
     function setStatus(text) {
       syncStatus.textContent = text;
     }
 
-    // ページを閉じる前に未保存の変更があれば警告＆即時保存を試行
     window.addEventListener('beforeunload', (e) => {
       if (saveTimer) {
         clearTimeout(saveTimer);
@@ -511,9 +339,6 @@
       }
     });
 
-    // ============================================================================
-    // Undo / Redo（やり直し）& エディタ制御
-    // ============================================================================
     function loadInitialContent(text) {
       editor.value = text;
       renderSafeMarkdown(text);
@@ -523,15 +348,11 @@
     }
 
     function recordHistory(text) {
-      if (isHistoryNavigating) return;
-      if (historyStack[historyIndex] === text) return;
+      if (isHistoryNavigating || historyStack[historyIndex] === text) return;
       historyStack = historyStack.slice(0, historyIndex + 1);
       historyStack.push(text);
-      if (historyStack.length > 200) {
-        historyStack.shift();
-      } else {
-        historyIndex++;
-      }
+      if (historyStack.length > 200) historyStack.shift();
+      else historyIndex++;
       updateHistoryButtons();
     }
 
@@ -565,9 +386,8 @@
     }
 
     editor.addEventListener('input', () => {
-      const currentText = editor.value;
-      renderSafeMarkdown(currentText);
-      recordHistory(currentText);
+      renderSafeMarkdown(editor.value);
+      recordHistory(editor.value);
       scheduleAutoSave();
     });
 
@@ -578,20 +398,13 @@
       const isCtrlOrCmd = e.ctrlKey || e.metaKey;
       if (isCtrlOrCmd && e.key.toLowerCase() === 'z') {
         e.preventDefault();
-        if (e.shiftKey) {
-          performRedo();
-        } else {
-          performUndo();
-        }
+        e.shiftKey ? performRedo() : performUndo();
       } else if (isCtrlOrCmd && e.key.toLowerCase() === 'y') {
         e.preventDefault();
         performRedo();
       } else if (isCtrlOrCmd && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        if (saveTimer) {
-          clearTimeout(saveTimer);
-          saveTimer = null;
-        }
+        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
         saveToDrive();
       }
     });
