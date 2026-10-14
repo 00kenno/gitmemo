@@ -3,12 +3,28 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GitMemo - Markdown & Marp Cloud Notepad</title>
-  <!-- Marked.js & DOMPurify (通常マークダウン & サニタイズ用) -->
+  <title>GitMemo - Markdown, Marp & Vim Cloud Notepad</title>
+
+  <!-- Marked.js & DOMPurify -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.0.9/dist/purify.min.js"></script>
+
+  <!-- CodeMirror 5 & Vim Keymap -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/dialog/dialog.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/search/searchcursor.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/keymap/vim.min.js"></script>
+
+  <!-- PptxGenJS & html-to-image (PPTX出力用) -->
+  <script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html-to-image@1.11.11/dist/html-to-image.js"></script>
+
   <!-- Google Identity Services -->
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+
   <!-- Marp スライド生成スタイル挿入用 -->
   <style id="marp-styles"></style>
   <style>
@@ -20,7 +36,8 @@
       --muted: #64748b;
       --primary: #2563eb;
       --primary-hover: #1d4ed8;
-      --accent: #0ea5e9;
+      --vim-bg: #1e293b;
+      --vim-text: #f8fafc;
     }
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
@@ -114,22 +131,41 @@
     }
     #sync-status { font-size: 0.82rem; color: var(--muted); margin-right: 0.4rem; }
 
-    /* メイン画面 */
+    /* メイン画面 (CodeMirror + プレビュー) */
     main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; overflow: hidden; }
-    #editor {
-      width: 100%;
+    .editor-pane {
+      display: flex;
+      flex-direction: column;
       height: 100%;
-      border: none;
       border-right: 1px solid var(--border);
-      padding: 1.25rem;
+      overflow: hidden;
+      background: var(--surface);
+    }
+    .CodeMirror {
+      flex: 1;
+      height: 100% !important;
       font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
       font-size: 0.95rem;
       line-height: 1.6;
-      resize: none;
-      outline: none;
-      background: var(--surface);
-      color: var(--text);
+      padding: 0.75rem 0;
     }
+    .CodeMirror-lines { padding: 0 1rem; }
+
+    /* Vim ステータスバー */
+    #vim-statusbar {
+      display: none;
+      background: var(--vim-bg);
+      color: var(--vim-text);
+      font-family: monospace;
+      font-size: 0.8rem;
+      padding: 0.25rem 0.8rem;
+      align-items: center;
+      justify-content: space-between;
+    }
+    #vim-statusbar.visible { display: flex; }
+    #vim-mode-indicator { font-weight: 700; color: #38bdf8; }
+
+    /* プレビュー領域 */
     #preview {
       padding: 1.25rem 1.5rem;
       overflow-y: auto;
@@ -164,7 +200,7 @@
 
     /* 全画面プレゼンテーションモード */
     body.presenting header,
-    body.presenting #editor {
+    body.presenting .editor-pane {
       display: none !important;
     }
     body.presenting main {
@@ -226,7 +262,7 @@
 
     /* 印刷・PDF出力対応 */
     @media print {
-      header, #editor, #auth-overlay, #privacy-overlay, #present-controls { display: none !important; }
+      header, .editor-pane, #auth-overlay, #privacy-overlay, #present-controls { display: none !important; }
       main { display: block; overflow: visible; }
       #preview, #preview.marp-mode { padding: 0; background: none; overflow: visible; }
       #preview.marp-mode .marpit > svg {
@@ -239,7 +275,7 @@
 
     @media (max-width: 768px) {
       main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr; }
-      #editor { border-right: none; border-bottom: 1px solid var(--border); }
+      .editor-pane { border-right: none; border-bottom: 1px solid var(--border); }
     }
   </style>
 </head>
@@ -275,11 +311,13 @@
   <header>
     <div class="toolbar-left">
       <span class="app-title">GitMemo</span>
-      <button id="undo-btn" class="tool-btn" title="元に戻す (Ctrl+Z)" disabled>↩ 元に戻す</button>
-      <button id="redo-btn" class="tool-btn" title="やり直し (Ctrl+Y / Ctrl+Shift+Z)" disabled>↪ やり直し</button>
+      <button id="undo-btn" class="tool-btn" title="元に戻す (Ctrl+Z / Vim: u)" disabled>↩ 元に戻す</button>
+      <button id="redo-btn" class="tool-btn" title="やり直し (Ctrl+Y / Vim: Ctrl+R)" disabled>↪ やり直し</button>
+      <button id="vim-toggle-btn" class="tool-btn" title="VimキーバインドのON/OFF">🟢 Vim</button>
       <button id="marp-toggle-btn" class="tool-btn" title="Marpスライド表示のON/OFF">📊 Marp切替</button>
       <button id="marp-template-btn" class="tool-btn" title="Marpフロントマターを先頭に挿入">✨ Marp見本</button>
       <button id="present-btn" class="tool-btn" title="全画面でスライドショーを開始" style="display:none;">▶️ プレゼン</button>
+      <button id="pptx-btn" class="tool-btn" title="スライドをPowerPoint(.pptx)でダウンロード" style="display:none;">📊 PPTX出力</button>
       <button id="pdf-btn" class="tool-btn" title="スライドをPDF/印刷出力" style="display:none;">🖨️ PDF出力</button>
     </div>
     <div class="toolbar-right">
@@ -291,7 +329,13 @@
 
   <!-- 4. エディタ & プレビュー -->
   <main>
-    <textarea id="editor" placeholder="ここにマークダウン（またはMarpスライド）を入力..." disabled></textarea>
+    <div class="editor-pane">
+      <textarea id="editor" placeholder="ここにマークダウン（またはMarpスライド）を入力..."></textarea>
+      <div id="vim-statusbar">
+        <span id="vim-mode-indicator">-- NORMAL --</span>
+        <span id="vim-command-info">:w で即時保存 / :wq でプレゼン開始</span>
+      </div>
+    </div>
     <div id="preview" class="doc-mode"></div>
   </main>
 
@@ -303,7 +347,7 @@
     <button id="exit-present-btn" class="pres-btn">終了 (Esc)</button>
   </div>
 
-  <!-- Marp Core (ESM) 読み込みとアプリケーションロジック -->
+  <!-- Marp Core (ESM) & アプリケーションロジック -->
   <script type="module">
     import { Marp } from 'https://esm.sh/@marp-team/marp-core@3?bundle';
 
@@ -314,23 +358,19 @@
     const TARGET_FILE_NAME = 'gitmemo';
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
-    // Marp インスタンス初期化 (安全のため生のHTMLタグは無効化)
     const marp = new Marp({ html: false });
 
     let tokenClient;
     let accessToken = null;
     let fileId = null;
     let saveTimer = null;
+    let isLoadingInitial = false;
 
-    // モード管理 (null = 自動判定, true = 強制Marp, false = 強制通常MD)
+    // モード管理
     let forceMarpMode = null;
     let isCurrentlyMarp = false;
     let currentSlideIndex = 0;
-
-    // Undo / Redo スタック
-    let historyStack = [''];
-    let historyIndex = 0;
-    let isHistoryNavigating = false;
+    let isVimEnabled = localStorage.getItem('gitmemo_vim') === 'true';
 
     // DOM要素
     const authOverlay = document.getElementById('auth-overlay');
@@ -338,19 +378,68 @@
     const loginBtn = document.getElementById('login-btn');
     const switchAccountBtn = document.getElementById('switch-account-btn');
     const logoutBtn = document.getElementById('logout-btn');
-    const editor = document.getElementById('editor');
     const preview = document.getElementById('preview');
     const marpStyles = document.getElementById('marp-styles');
     const syncStatus = document.getElementById('sync-status');
     const undoBtn = document.getElementById('undo-btn');
     const redoBtn = document.getElementById('redo-btn');
+    const vimToggleBtn = document.getElementById('vim-toggle-btn');
+    const vimStatusbar = document.getElementById('vim-statusbar');
+    const vimModeIndicator = document.getElementById('vim-mode-indicator');
     const marpToggleBtn = document.getElementById('marp-toggle-btn');
     const marpTemplateBtn = document.getElementById('marp-template-btn');
     const presentBtn = document.getElementById('present-btn');
+    const pptxBtn = document.getElementById('pptx-btn');
     const pdfBtn = document.getElementById('pdf-btn');
     const slideCounter = document.getElementById('slide-counter');
 
     marked.setOptions({ breaks: true, gfm: true });
+
+    // ============================================================================
+    // CodeMirror 5 & Vim モードの初期化
+    // ============================================================================
+    const cm = CodeMirror.fromTextArea(document.getElementById('editor'), {
+      mode: 'markdown',
+      lineNumbers: true,
+      lineWrapping: true,
+      readOnly: 'nocursor',
+      keyMap: isVimEnabled ? 'vim' : 'default',
+      extraKeys: {
+        'Ctrl-S': () => triggerImmediateSave(),
+        'Cmd-S': () => triggerImmediateSave()
+      }
+    });
+
+    // VimのカスタムExコマンド (:w でDrive保存、:wq で保存してプレゼン開始)
+    if (CodeMirror.Vim) {
+      CodeMirror.Vim.defineEx('write', 'w', () => {
+        triggerImmediateSave();
+      });
+      CodeMirror.Vim.defineEx('wq', 'wq', () => {
+        triggerImmediateSave();
+        if (isCurrentlyMarp) startPresentation();
+      });
+    }
+
+    function applyVimSetting() {
+      cm.setOption('keyMap', isVimEnabled ? 'vim' : 'default');
+      vimToggleBtn.classList.toggle('active', isVimEnabled);
+      vimStatusbar.classList.toggle('visible', isVimEnabled);
+      localStorage.setItem('gitmemo_vim', isVimEnabled);
+      cm.focus();
+    }
+    applyVimSetting();
+
+    vimToggleBtn.addEventListener('click', () => {
+      isVimEnabled = !isVimEnabled;
+      applyVimSetting();
+    });
+
+    cm.on('vim-mode-change', (e) => {
+      const modeName = e.mode.toUpperCase();
+      const subMode = e.subMode ? ` (${e.subMode.toUpperCase()})` : '';
+      vimModeIndicator.textContent = `-- ${modeName}${subMode} --`;
+    });
 
     // ============================================================================
     // マークダウン / Marp レンダリング切り替え処理
@@ -363,9 +452,9 @@
       const autoDetected = hasMarpFrontmatter(markdownText);
       isCurrentlyMarp = forceMarpMode !== null ? forceMarpMode : autoDetected;
 
-      // UIボタンの状態更新
       marpToggleBtn.classList.toggle('active', isCurrentlyMarp);
       presentBtn.style.display = isCurrentlyMarp ? 'inline-block' : 'none';
+      pptxBtn.style.display = isCurrentlyMarp ? 'inline-block' : 'none';
       pdfBtn.style.display = isCurrentlyMarp ? 'inline-block' : 'none';
 
       if (isCurrentlyMarp) {
@@ -383,23 +472,77 @@
       }
     }
 
-    // Marpモード手動切り替えボタン
     marpToggleBtn.addEventListener('click', () => {
       forceMarpMode = !isCurrentlyMarp;
-      renderContent(editor.value);
+      renderContent(cm.getValue());
     });
 
-    // Marp見本フロントマター挿入ボタン
     marpTemplateBtn.addEventListener('click', () => {
-      if (!hasMarpFrontmatter(editor.value)) {
+      const currentVal = cm.getValue();
+      if (!hasMarpFrontmatter(currentVal)) {
         const header = `---\nmarp: true\ntheme: default\npaginate: true\n---\n\n`;
-        editor.value = header + (editor.value || '# スライドタイトル\n\n---\n\n## 2ページ目のスライド\n- 箇条書き1\n- 箇条書き2');
-        forceMarpMode = null; // 自動判定に戻す
-        renderContent(editor.value);
-        recordHistory(editor.value);
-        scheduleAutoSave();
+        const nextVal = header + (currentVal || '# スライドタイトル\n\n---\n\n## 2ページ目のスライド\n- 箇条書き1\n- 箇条書き2');
+        forceMarpMode = null;
+        cm.setValue(nextVal);
       } else {
         alert('すでに先頭に `marp: true` が含まれています。');
+      }
+    });
+
+    // ============================================================================
+    // PPTX（PowerPoint）エクスポート機能
+    // ============================================================================
+    pptxBtn.addEventListener('click', async () => {
+      const slides = preview.querySelectorAll('.marpit > svg');
+      if (slides.length === 0) {
+        alert('出力するスライドがありません。');
+        return;
+      }
+
+      const originalBtnText = pptxBtn.textContent;
+      pptxBtn.disabled = true;
+
+      try {
+        const pptx = new PptxGenJS();
+
+        // 1枚目のスライドのviewBoxからアスペクト比（16:9 または 4:3）を自動判定
+        const viewBox = slides[0].getAttribute('viewBox')?.split(' ').map(Number) || [0, 0, 1280, 720];
+        const width = viewBox[2] || 1280;
+        const height = viewBox[3] || 720;
+        if (Math.abs(width / height - 4 / 3) < 0.1) {
+          pptx.layout = 'LAYOUT_4x3';
+        } else {
+          pptx.layout = 'LAYOUT_16x9';
+        }
+
+        for (let i = 0; i < slides.length; i++) {
+          pptxBtn.textContent = `⏳ 変換中 (${i + 1}/${slides.length})...`;
+
+          // MarpのCSSデザインを完全に維持するため、各スライドSVGを高解像度PNGに変換して配置
+          const dataUrl = await htmlToImage.toPng(slides[i], {
+            width: width,
+            height: height,
+            pixelRatio: 2
+          });
+
+          const slide = pptx.addSlide();
+          slide.addImage({
+            data: dataUrl,
+            x: 0,
+            y: 0,
+            w: '100%',
+            h: '100%'
+          });
+        }
+
+        pptxBtn.textContent = '💾 保存中...';
+        await pptx.writeFile({ fileName: `${TARGET_FILE_NAME}.pptx` });
+      } catch (err) {
+        console.error('PPTX Export Error:', err);
+        alert('PPTXの生成中にエラーが発生しました。\n外部画像（CORS制限のあるURL）が含まれている場合は除外してお試しください。');
+      } finally {
+        pptxBtn.textContent = originalBtnText;
+        pptxBtn.disabled = false;
       }
     });
 
@@ -439,10 +582,10 @@
       if (document.fullscreenElement) {
         document.exitFullscreen().catch(() => {});
       }
+      cm.refresh();
     }
 
     presentBtn.addEventListener('click', startPresentation);
-    document.getElementById(' exit-present-btn')?.addEventListener('click', exitPresentation);
     document.getElementById('exit-present-btn').addEventListener('click', exitPresentation);
     document.getElementById('prev-slide-btn').addEventListener('click', () => {
       currentSlideIndex--;
@@ -453,20 +596,20 @@
       updateActiveSlide();
     });
 
-    // フルスクリーン解除連動 & キーボードでのスライド操作
     document.addEventListener('fullscreenchange', () => {
       if (!document.fullscreenElement && document.body.classList.contains('presenting')) {
         document.body.classList.remove('presenting');
+        cm.refresh();
       }
     });
 
     window.addEventListener('keydown', (e) => {
       if (!document.body.classList.contains('presenting')) return;
-      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown' || e.key === 'j' || e.key === 'l') {
         e.preventDefault();
         currentSlideIndex++;
         updateActiveSlide();
-      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp' || e.key === 'k' || e.key === 'h') {
         e.preventDefault();
         currentSlideIndex--;
         updateActiveSlide();
@@ -475,10 +618,7 @@
       }
     });
 
-    // PDF出力（印刷ダイアログ）
-    pdfBtn.addEventListener('click', () => {
-      window.print();
-    });
+    pdfBtn.addEventListener('click', () => window.print());
 
     // ============================================================================
     // Google OAuth 認証 & Drive 同期ロジック
@@ -513,9 +653,11 @@
       if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
       accessToken = null;
       fileId = null;
-      editor.value = '';
+      isLoadingInitial = true;
+      cm.setValue('');
+      isLoadingInitial = false;
+      cm.setOption('readOnly', 'nocursor');
       preview.innerHTML = '';
-      editor.disabled = true;
       logoutBtn.style.display = 'none';
       setStatus('未ログイン');
       authOverlay.style.display = 'flex';
@@ -530,7 +672,7 @@
 
     async function initializeGitMemo() {
       setStatus('Drive上の gitmemo を確認中...');
-      editor.disabled = true;
+      cm.setOption('readOnly', 'nocursor');
 
       try {
         const query = encodeURIComponent(`name = '${TARGET_FILE_NAME}' and trashed = false`);
@@ -560,12 +702,13 @@
           });
           const data = await res.json();
           fileId = data.id;
-          const initialSample = `---\nmarp: true\ntheme: default\npaginate: true\n---\n\n# GitMemo with Marp\nGoogle Drive上の \`gitmemo\` と同期を開始しました。\n\n---\n\n## スライドの作り方\n- \`---\` でページを区切ります\n- 上部の「📊 Marp切替」で通常メモ表示と切り替えられます\n- 「▶️ プレゼン」で全画面スライドショーができます`;
+          const initialSample = `---\nmarp: true\ntheme: default\npaginate: true\n---\n\n# GitMemo (Marp + Vim + PPTX)\nGoogle Drive上の \`gitmemo\` と同期を開始しました。\n\n---\n\n## 使い方\n- **🟢 Vim**: VimキーバインドのON/OFF（\`:w\` で即時保存）\n- **📊 PPTX出力**: PowerPointファイル（.pptx）としてダウンロード\n- **▶️ プレゼン**: 全画面スライドショー（\`h\`/\`j\`/\`k\`/\`l\` でも移動可能）`;
           loadInitialContent(initialSample);
           await saveToDrive();
         }
-        editor.disabled = false;
-        editor.focus();
+        cm.setOption('readOnly', false);
+        cm.refresh();
+        cm.focus();
       } catch (err) {
         console.error(err);
         setStatus('エラー: 同期失敗');
@@ -582,7 +725,7 @@
             Authorization: `Bearer ${accessToken}`,
             'Content-Type': 'text/markdown; charset=UTF-8'
           },
-          body: editor.value
+          body: cm.getValue()
         });
         if (res.ok) {
           saveTimer = null;
@@ -598,6 +741,14 @@
         console.error(err);
         setStatus('オフライン / 通信エラー');
       }
+    }
+
+    function triggerImmediateSave() {
+      if (saveTimer) {
+        clearTimeout(saveTimer);
+        saveTimer = null;
+      }
+      saveToDrive();
     }
 
     function scheduleAutoSave() {
@@ -620,76 +771,39 @@
     });
 
     // ============================================================================
-    // Undo / Redo（やり直し）& エディタ入力管理
+    // Undo / Redo（CodeMirror履歴管理）
     // ============================================================================
     function loadInitialContent(text) {
-      editor.value = text;
+      isLoadingInitial = true;
+      cm.setValue(text);
+      cm.clearHistory();
+      isLoadingInitial = false;
       renderContent(text);
-      historyStack = [text];
-      historyIndex = 0;
       updateHistoryButtons();
-    }
-
-    function recordHistory(text) {
-      if (isHistoryNavigating || historyStack[historyIndex] === text) return;
-      historyStack = historyStack.slice(0, historyIndex + 1);
-      historyStack.push(text);
-      if (historyStack.length > 200) historyStack.shift();
-      else historyIndex++;
-      updateHistoryButtons();
-    }
-
-    function performUndo() {
-      if (historyIndex > 0) {
-        isHistoryNavigating = true;
-        historyIndex--;
-        editor.value = historyStack[historyIndex];
-        renderContent(editor.value);
-        updateHistoryButtons();
-        scheduleAutoSave();
-        isHistoryNavigating = false;
-      }
-    }
-
-    function performRedo() {
-      if (historyIndex < historyStack.length - 1) {
-        isHistoryNavigating = true;
-        historyIndex++;
-        editor.value = historyStack[historyIndex];
-        renderContent(editor.value);
-        updateHistoryButtons();
-        scheduleAutoSave();
-        isHistoryNavigating = false;
-      }
     }
 
     function updateHistoryButtons() {
-      undoBtn.disabled = historyIndex <= 0;
-      redoBtn.disabled = historyIndex >= historyStack.length - 1;
+      const hist = cm.historySize();
+      undoBtn.disabled = hist.undo <= 0;
+      redoBtn.disabled = hist.redo <= 0;
     }
 
-    editor.addEventListener('input', () => {
-      renderContent(editor.value);
-      recordHistory(editor.value);
+    cm.on('change', () => {
+      if (isLoadingInitial) return;
+      const val = cm.getValue();
+      renderContent(val);
+      updateHistoryButtons();
       scheduleAutoSave();
     });
 
-    undoBtn.addEventListener('click', performUndo);
-    redoBtn.addEventListener('click', performRedo);
+    undoBtn.addEventListener('click', () => {
+      cm.undo();
+      cm.focus();
+    });
 
-    editor.addEventListener('keydown', (e) => {
-      const isCtrlOrCmd = e.ctrlKey || e.metaKey;
-      if (isCtrlOrCmd && e.key.toLowerCase() === 'z') {
-        e.preventDefault();
-        e.shiftKey ? performRedo() : performUndo();
-      } else if (isCtrlOrCmd && e.key.toLowerCase() === 'y') {
-        e.preventDefault();
-        performRedo();
-      } else if (isCtrlOrCmd && e.key.toLowerCase() === 's') {
-        e.preventDefault();
-        if (saveTimer) { clearTimeout(saveTimer); saveTimer = null; }
-        saveToDrive();
-      }
+    redoBtn.addEventListener('click', () => {
+      cm.redo();
+      cm.focus();
     });
   </script>
 </body>
