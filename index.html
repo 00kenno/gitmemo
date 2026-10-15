@@ -358,7 +358,7 @@
     const TARGET_FILE_NAME = 'gitmemo';
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
-    const marp = new Marp({ html: false });
+    const marp = new Marp({ html: true });
 
     let tokenClient;
     let accessToken = null;
@@ -461,7 +461,10 @@
         preview.className = 'marp-mode';
         const { html, css } = marp.render(markdownText);
         marpStyles.textContent = css;
-        preview.innerHTML = html;
+        preview.innerHTML = DOMPurify.sanitize(html, {
+          ADD_TAGS: ['foreignObject'],
+          ADD_ATTR: [' marp-auto-scaling', 'data-marpit-svg', 'data-marpit-fragment', 'data-marpit-pagination', 'data-marpit-pagination-total', 'viewBox', 'preserveAspectRatio']
+        });
         if (document.body.classList.contains('presenting')) {
           updateActiveSlide();
         }
