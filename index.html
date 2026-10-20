@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>GitMemo - Markdown, Marp & Vim Cloud Notepad</title>
+  <title>GitMemo - Markdown, Marp, Mermaid & Vim Cloud Notepad</title>
 
   <!-- Marked.js & DOMPurify -->
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
@@ -182,6 +182,21 @@
     #preview.doc-mode pre { background: #1e293b; color: #f8fafc; padding: 1rem; border-radius: 8px; overflow-x: auto; margin-bottom: 1em; }
     #preview.doc-mode pre code { background: none; color: inherit; padding: 0; }
     #preview.doc-mode blockquote { border-left: 4px solid #cbd5e1; padding-left: 1rem; color: var(--muted); }
+    #preview.doc-mode img { max-width: 100%; height: auto; }
+
+    /* Mermaid 図表のレイアウト調整 (通常モード & Marpモード共通) */
+    .mermaid {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      margin: 1rem 0;
+      background: transparent !important;
+    }
+    .mermaid svg {
+      max-width: 100% !important;
+      height: auto !important;
+      max-height: 480px;
+    }
 
     /* Marp スライドプレビュー表示スタイル */
     #preview.marp-mode {
@@ -313,6 +328,7 @@
       <span class="app-title">GitMemo</span>
       <button id="undo-btn" class="tool-btn" title="元に戻す (Ctrl+Z / Vim: u)" disabled>↩ 元に戻す</button>
       <button id="redo-btn" class="tool-btn" title="やり直し (Ctrl+Y / Vim: Ctrl+R)" disabled>↪ やり直し</button>
+      <button id="copy-btn" class="tool-btn" title="内容をコピー">📄コピー</button>
       <button id="vim-toggle-btn" class="tool-btn" title="VimキーバインドのON/OFF">🟢 Vim</button>
       <button id="marp-toggle-btn" class="tool-btn" title="Marpスライド表示のON/OFF">📊 Marp切替</button>
       <button id="marp-template-btn" class="tool-btn" title="Marpフロントマターを先頭に挿入">✨ Marp見本</button>
@@ -330,10 +346,10 @@
   <!-- 4. エディタ & プレビュー -->
   <main>
     <div class="editor-pane">
-      <textarea id="editor" placeholder="ここにマークダウン（またはMarpスライド）を入力..."></textarea>
+      <textarea id="editor" placeholder="ここにマークダウン（またはMarp / Mermaid）を入力..."></textarea>
       <div id="vim-statusbar">
         <span id="vim-mode-indicator">-- NORMAL --</span>
-        <span id="vim-command-info">:w で即時保存 / :wq でプレゼン開始</span>
+        <span id="vim-command-info">Ctrl+[ または Esc でNORMAL / :w で即時保存 / :wq でプレゼン開始</span>
       </div>
     </div>
     <div id="preview" class="doc-mode"></div>
@@ -347,9 +363,19 @@
     <button id="exit-present-btn" class="pres-btn">終了 (Esc)</button>
   </div>
 
-  <!-- Marp Core (ESM) & アプリケーションロジック -->
+  <!-- Marp Core & Mermaid (ESM) 読み込みとアプリケーションロジック -->
   <script type="module">
     import { Marp } from 'https://esm.sh/@marp-team/marp-core@3?bundle';
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+
+    const copyBtn = document.getElementById('copy-btn');
+    copyBtn.addEventListener('click', click_copy_btn, false);
+    function click_copy_btn() {
+      //コピーするテキストを取得
+      let getTxt = document.getElementById('editor').innerText;
+      //取得したテキストをクリップボードに書き込み
+      navigator.clipboard.writeText(getTxt);
+    }
 
     // ============================================================================
     // 設定: ご自身のOAuthクライアントIDに置き換えてください
@@ -358,12 +384,21 @@
     const TARGET_FILE_NAME = 'gitmemo';
     const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
+    // HTMLタグ (<img> 等) を有効化してMarpを初期化
     const marp = new Marp({ html: true });
+
+    // Mermaid 初期化
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'default',
+      securityLevel: 'strict'
+    });
 
     let tokenClient;
     let accessToken = null;
     let fileId = null;
     let saveTimer = null;
+    let mermaidTimer = null;
     let isLoadingInitial = false;
 
     // モード管理
@@ -410,7 +445,6 @@
       }
     });
 
-    // VimのカスタムExコマンド (:w でDrive保存、:wq で保存してプレゼン開始)
     if (CodeMirror.Vim) {
       CodeMirror.Vim.defineEx('write', 'w', () => {
         triggerImmediateSave();
@@ -442,10 +476,37 @@
     });
 
     // ============================================================================
-    // マークダウン / Marp レンダリング切り替え処理
+    // マークダウン / Marp / Mermaid レンダリング処理
     // ============================================================================
     function hasMarpFrontmatter(text) {
       return /^---\r?\n[\s\S]*?marp:\s*true[\s\S]*?\r?\n---/m.test(text);
+    }
+
+    // プレビュー内の ```mermaid コードブロックを検出してSVG図表に変換
+    async function renderMermaidDiagrams() {
+      // 通常モードの <code class="language-mermaid"> と Marpモードの <pre is="marp-pre"><code class="language-mermaid"> 両方に対応
+      const codeBlocks = preview.querySelectorAll('code.language-mermaid');
+      if (codeBlocks.length === 0) return;
+
+      const nodesToRender = [];
+      codeBlocks.forEach((codeEl) => {
+        const preEl = codeEl.closest('pre') || codeEl.parentElement;
+        if (!preEl) return;
+        const container = document.createElement('div');
+        container.className = 'mermaid';
+        container.textContent = codeEl.textContent;
+        preEl.replaceWith(container);
+        nodesToRender.push(container);
+      });
+
+      try {
+        await mermaid.run({
+          nodes: nodesToRender,
+          suppressErrors: true
+        });
+      } catch (err) {
+        // 入力途中の構文エラー時はコンソール汚染を防ぐため無視
+      }
     }
 
     function renderContent(markdownText) {
@@ -462,8 +523,12 @@
         const { html, css } = marp.render(markdownText);
         marpStyles.textContent = css;
         preview.innerHTML = DOMPurify.sanitize(html, {
-          ADD_TAGS: ['foreignObject'],
-          ADD_ATTR: [' marp-auto-scaling', 'data-marpit-svg', 'data-marpit-fragment', 'data-marpit-pagination', 'data-marpit-pagination-total', 'viewBox', 'preserveAspectRatio']
+          ADD_TAGS: ['foreignObject', 'marp-pre'],
+          ADD_ATTR: [
+            'is', 'marp-auto-scaling', 'data-marpit-svg',
+            'data-marpit-fragment', 'data-marpit-pagination',
+            'data-marpit-pagination-total', 'viewBox', 'preserveAspectRatio'
+          ]
         });
         if (document.body.classList.contains('presenting')) {
           updateActiveSlide();
@@ -473,6 +538,12 @@
         marpStyles.textContent = '';
         preview.innerHTML = DOMPurify.sanitize(marked.parse(markdownText));
       }
+
+      // タイピング中の負荷を抑えるため、少しだけデバウンスしてMermaidを描画
+      if (mermaidTimer) clearTimeout(mermaidTimer);
+      mermaidTimer = setTimeout(() => {
+        renderMermaidDiagrams();
+      }, 150);
     }
 
     marpToggleBtn.addEventListener('click', () => {
@@ -484,7 +555,7 @@
       const currentVal = cm.getValue();
       if (!hasMarpFrontmatter(currentVal)) {
         const header = `---\nmarp: true\ntheme: default\npaginate: true\n---\n\n`;
-        const nextVal = header + (currentVal || '# スライドタイトル\n\n---\n\n## 2ページ目のスライド\n- 箇条書き1\n- 箇条書き2');
+        const nextVal = header + (currentVal || '# スライドタイトル\n\n---\n\n## Mermaid 図表スライド\n```mermaid\ngraph LR\n  A[Markdown] --> B(Marp)\n  B --> C{Mermaid}\n```');
         forceMarpMode = null;
         cm.setValue(nextVal);
       } else {
@@ -496,6 +567,9 @@
     // PPTX（PowerPoint）エクスポート機能
     // ============================================================================
     pptxBtn.addEventListener('click', async () => {
+      // 未描画のMermaidがあれば先に完了させる
+      await renderMermaidDiagrams();
+
       const slides = preview.querySelectorAll('.marpit > svg');
       if (slides.length === 0) {
         alert('出力するスライドがありません。');
@@ -508,7 +582,6 @@
       try {
         const pptx = new PptxGenJS();
 
-        // 1枚目のスライドのviewBoxからアスペクト比（16:9 または 4:3）を自動判定
         const viewBox = slides[0].getAttribute('viewBox')?.split(' ').map(Number) || [0, 0, 1280, 720];
         const width = viewBox[2] || 1280;
         const height = viewBox[3] || 720;
@@ -521,7 +594,6 @@
         for (let i = 0; i < slides.length; i++) {
           pptxBtn.textContent = `⏳ 変換中 (${i + 1}/${slides.length})...`;
 
-          // MarpのCSSデザインを完全に維持するため、各スライドSVGを高解像度PNGに変換して配置
           const dataUrl = await htmlToImage.toPng(slides[i], {
             width: width,
             height: height,
@@ -679,7 +751,7 @@
 
       try {
         const query = encodeURIComponent(`name = '${TARGET_FILE_NAME}' and trashed = false`);
-        const searchRes = await fetch(`https://www.googleapis.com/drive/v3/files?q=${query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {
+        const searchRes = await fetch(`[https://www.googleapis.com/drive/v3/files?q=$](https://www.googleapis.com/drive/v3/files?q=$){query}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`, {
           headers: { Authorization: `Bearer ${accessToken}` }
         });
         const searchData = await searchRes.json();
@@ -687,7 +759,7 @@
         if (searchData.files && searchData.files.length > 0) {
           fileId = searchData.files[0].id;
           setStatus('gitmemo を読み込み中...');
-          const contentRes = await fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+          const contentRes = await fetch(`[https://www.googleapis.com/drive/v3/files/$](https://www.googleapis.com/drive/v3/files/$){fileId}?alt=media`, {
             headers: { Authorization: `Bearer ${accessToken}` }
           });
           const text = await contentRes.text();
@@ -695,7 +767,7 @@
           setStatus('同期完了');
         } else {
           setStatus('gitmemo を新規作成中...');
-          const res = await fetch('https://www.googleapis.com/drive/v3/files', {
+          const res = await fetch('[https://www.googleapis.com/drive/v3/files](https://www.googleapis.com/drive/v3/files)', {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${accessToken}`,
@@ -705,7 +777,7 @@
           });
           const data = await res.json();
           fileId = data.id;
-          const initialSample = `---\nmarp: true\ntheme: default\npaginate: true\n---\n\n# GitMemo (Marp + Vim + PPTX)\nGoogle Drive上の \`gitmemo\` と同期を開始しました。\n\n---\n\n## 使い方\n- **🟢 Vim**: VimキーバインドのON/OFF（\`:w\` で即時保存）\n- **📊 PPTX出力**: PowerPointファイル（.pptx）としてダウンロード\n- **▶️ プレゼン**: 全画面スライドショー（\`h\`/\`j\`/\`k\`/\`l\` でも移動可能）`;
+          const initialSample = `---\nmarp: true\ntheme: default\npaginate: true\n---\n\n# GitMemo (Marp + Mermaid + Vim)\nGoogle Drive上の \`gitmemo\` と同期を開始しました。\n\n---\n\n## Mermaid 図表の描画テスト\n\`\`\`mermaid\ngraph LR\n  A[Markdown記述] --> B(Marpスライド化)\n  B --> C{Mermaid図表}\n  C --> D[PPTX / PDF出力]\n\`\`\`\n\n<img src="[https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png](https://github.githubassets.com/images/modules/logos_page/GitHub-Mark.png)" width="60"> HTMLの \`<img>\` タグもそのまま使えます。`;
           loadInitialContent(initialSample);
           await saveToDrive();
         }
@@ -722,7 +794,7 @@
       if (!fileId || !accessToken) return;
       setStatus('保存中...');
       try {
-        const res = await fetch(`https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=media`, {
+        const res = await fetch(`[https://www.googleapis.com/upload/drive/v3/files/$](https://www.googleapis.com/upload/drive/v3/files/$){fileId}?uploadType=media`, {
           method: 'PATCH',
           headers: {
             Authorization: `Bearer ${accessToken}`,
